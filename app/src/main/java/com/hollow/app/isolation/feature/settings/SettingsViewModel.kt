@@ -16,6 +16,8 @@ import com.hollow.app.isolation.model.PickerPolicy
 import com.hollow.app.isolation.model.VpnProxyPresets
 import com.hollow.app.isolation.model.VpnProxyServer
 import com.hollow.app.isolation.model.VpnConnectionState
+import com.hollow.app.isolation.model.VpnEngineMode
+import com.hollow.app.isolation.service.RootVpnEngine
 import com.hollow.app.isolation.service.HollowVpnService
 import com.hollow.app.isolation.mount.MountEntry
 import com.hollow.app.isolation.mount.MountManager
@@ -23,6 +25,8 @@ import com.hollow.app.isolation.pkg.InstalledAppInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import android.util.Base64
+import java.net.URL
 
 class SettingsViewModel(
     private val app: Application,
@@ -43,12 +47,113 @@ class SettingsViewModel(
         settingsRepository.clearStatusMessage()
     }
 
+    fun selectVpnEngine(mode: VpnEngineMode) {
+        stopVpnIfActive()
+        settingsRepository.updateSettings {
+            it.copy(vpnEngineMode = mode, vpnConnectionState = VpnConnectionState.DISCONNECTED)
+        }
+        settingsRepository.postStatusMessage(
+            if (mode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+                "Root TProxy mode selected; H1 will use its own Xray engine"
+            } else {
+                "Android VPN mode selected"
+            }
+        )
+    }
+
+    fun toggleRootVpn() {
+        if (settings.value.vpnConnectionState == VpnConnectionState.CONNECTED ||
+            settings.value.vpnConnectionState == VpnConnectionState.CONNECTING
+        ) {
+            viewModelScope.launch(Dispatchers.IO) {
+                RootVpnEngine.stop()
+                settingsRepository.updateSettings {
+                    it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.DISCONNECTED)
+                }
+                settingsRepository.postStatusMessage("Root TProxy stopped; network rules restored")
+            }
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsRepository.updateSettings { it.copy(vpnConnectionState = VpnConnectionState.CONNECTING) }
+            if (!RootVpnEngine.isAvailable()) {
+                settingsRepository.updateSettings {
+                    it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.ERROR)
+                }
+                settingsRepository.postStatusMessage(
+                    "Root TProxy unavailable. Grant H1 root access and retry."
+                )
+                return@launch
+            }
+            val current = settings.value
+            val selectedPackages = configRepository.configs.value
+                .filter { it.vpnProxyEnabled }
+                .map { it.packageName }
+                .toSet()
+            if (!current.connectWholeDevice && selectedPackages.isEmpty()) {
+                settingsRepository.updateSettings { it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.ERROR) }
+                settingsRepository.postStatusMessage("Select apps or enable whole-device routing before starting root TProxy")
+                return@launch
+            }
+            val result = RootVpnEngine.start(
+                app,
+                current.activeServer,
+                RootVpnEngine.RouteOptions(
+                    wholeDevice = current.connectWholeDevice,
+                    selectedPackages = selectedPackages,
+                    ipv6Enabled = current.rootIpv6Enabled,
+                    hotspotEnabled = current.rootHotspotEnabled,
+                    usbEnabled = current.rootUsbEnabled
+                )
+            )
+            if (result.exitCode == 0 && RootVpnEngine.isRunning()) {
+                settingsRepository.updateSettings {
+                    it.copy(vpnTunnelEnabled = true, vpnConnectionState = VpnConnectionState.CONNECTED)
+                }
+                settingsRepository.postStatusMessage("Root TProxy connected; Android VPN interface was not created")
+            } else {
+                settingsRepository.updateSettings {
+                    it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.ERROR)
+                }
+                settingsRepository.postStatusMessage(
+                    "Root TProxy failed: ${result.output.take(220).ifBlank { "check the H1 root Xray log" }}"
+                )
+            }
+        }
+    }
+
     fun setDarkTheme(dark: Boolean) {
         settingsRepository.updateSettings { it.copy(darkTheme = dark) }
     }
 
     fun setDynamicColor(dynamic: Boolean) {
         settingsRepository.updateSettings { it.copy(dynamicColor = dynamic) }
+    }
+
+    fun setRootIpv6Enabled(enabled: Boolean) {
+        settingsRepository.updateSettings { it.copy(rootIpv6Enabled = enabled) }
+        if (settings.value.vpnTunnelEnabled && settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+            settingsRepository.postStatusMessage("Reconnect root TProxy to apply IPv6 routing")
+        }
+    }
+
+    fun setRootHotspotEnabled(enabled: Boolean) {
+        settingsRepository.updateSettings { it.copy(rootHotspotEnabled = enabled) }
+        if (settings.value.vpnTunnelEnabled && settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+            settingsRepository.postStatusMessage("Reconnect root TProxy to apply hotspot routing")
+        }
+    }
+
+    fun setRootUsbEnabled(enabled: Boolean) {
+        settingsRepository.updateSettings { it.copy(rootUsbEnabled = enabled) }
+        if (settings.value.vpnTunnelEnabled && settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+            settingsRepository.postStatusMessage("Reconnect root TProxy to apply USB routing")
+        }
+    }
+
+    fun setRootAutoStart(enabled: Boolean) {
+        settingsRepository.updateSettings { it.copy(rootAutoStart = enabled) }
     }
 
     fun setRootVolumesEnabled(enabled: Boolean) {
@@ -145,9 +250,22 @@ class SettingsViewModel(
         }
     }
 
+    fun refreshRootVpnState() {
+        if (settings.value.vpnEngineMode != VpnEngineMode.ROOT_XRAY_TPROXY) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val running = RootVpnEngine.isRunning()
+            settingsRepository.updateSettings {
+                it.copy(
+                    vpnTunnelEnabled = running,
+                    vpnConnectionState = if (running) VpnConnectionState.CONNECTED else VpnConnectionState.DISCONNECTED
+                )
+            }
+        }
+    }
+
     fun selectActiveProxyServer(proxyId: String) {
         if (settings.value.vpnTunnelEnabled) {
-            app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
+            stopVpnIfActive()
         }
         val next = settingsRepository.updateSettings {
             it.copy(
@@ -178,6 +296,40 @@ class SettingsViewModel(
         return true
     }
 
+    fun setProxySubscriptionUrl(url: String) {
+        settingsRepository.updateSettings { it.copy(proxySubscriptionUrl = url.trim()) }
+    }
+
+    fun refreshProxySubscription() {
+        val subscriptionUrl = settings.value.proxySubscriptionUrl.trim()
+        if (subscriptionUrl.isBlank()) {
+            settingsRepository.postStatusMessage("Add a subscription URL first")
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val raw = URL(subscriptionUrl).openStream().bufferedReader().use { it.readText() }
+                val decoded = if (raw.contains("vless://", ignoreCase = true)) raw else {
+                    runCatching { String(Base64.decode(raw.filterNot { it.isWhitespace() }, Base64.DEFAULT)) }.getOrDefault(raw)
+                }
+                val nodes = decoded.split(Regex("\\s+|\\r?\\n"))
+                    .mapNotNull(VpnProxyPresets::parseUri)
+                    .distinctBy { it.shareUri }
+                if (nodes.isEmpty()) {
+                    settingsRepository.postStatusMessage("Subscription contained no supported VLESS TCP/RAW nodes")
+                    return@launch
+                }
+                val merged = (settings.value.customProxyServers + nodes).distinctBy { it.shareUri }
+                settingsRepository.updateSettings {
+                    it.copy(customProxyServers = merged, activeProxyServerId = it.activeProxyServerId.takeIf { id -> merged.any { node -> node.id == id } } ?: nodes.first().id)
+                }
+                settingsRepository.postStatusMessage("Subscription refreshed: ${nodes.size} supported node${if (nodes.size == 1) "" else "s"}")
+            } catch (failure: Exception) {
+                settingsRepository.postStatusMessage("Subscription refresh failed: ${failure.message?.take(160) ?: "network error"}")
+            }
+        }
+    }
+
     fun addCustomProxyServer(server: VpnProxyServer) {
         settingsRepository.updateSettings {
             it.copy(
@@ -192,7 +344,7 @@ class SettingsViewModel(
     fun deleteCustomProxyServer(proxyId: String) {
         val current = settings.value
         if (current.vpnTunnelEnabled && current.activeProxyServerId == proxyId) {
-            app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
+            stopVpnIfActive()
         }
         val remainingCustom = current.customProxyServers.filterNot { it.id == proxyId }
         val nextActive = if (current.activeProxyServerId == proxyId) {
@@ -318,7 +470,11 @@ class SettingsViewModel(
 
     private fun stopVpnIfActive() {
         if (!settings.value.vpnTunnelEnabled) return
-        app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
+        if (settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+            viewModelScope.launch(Dispatchers.IO) { RootVpnEngine.stop() }
+        } else {
+            app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
+        }
         settingsRepository.updateSettings {
             it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.DISCONNECTED)
         }

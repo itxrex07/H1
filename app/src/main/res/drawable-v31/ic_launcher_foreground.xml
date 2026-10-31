@@ -1,77 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
-    <!-- Android 12+ Dynamic Wallpaper-Reactive Hexagonal Vault Base -->
     <path
-        android:fillColor="@android:color/system_neutral1_800"
-        android:pathData="M54,23 L80.85,38.5 L80.85,69.5 L54,85 L27.15,69.5 L27.15,38.5 Z" />
-
-    <!-- Outer Hexagonal Dynamic Rim -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeWidth="2.8"
-        android:strokeLineJoin="round"
-        android:pathData="M54,23 L80.85,38.5 L80.85,69.5 L54,85 L27.15,69.5 L27.15,38.5 Z">
-        <aapt:attr name="android:strokeColor">
-            <gradient
-                android:startX="27"
-                android:startY="23"
-                android:endX="81"
-                android:endY="85"
-                android:type="linear">
-                <item android:color="@android:color/system_accent1_200" android:offset="0.0" />
-                <item android:color="@android:color/system_accent1_400" android:offset="0.5" />
-                <item android:color="@android:color/system_accent3_300" android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Precision Vault Lock Notches -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="@android:color/system_accent1_300"
-        android:strokeAlpha="0.65"
-        android:strokeWidth="2.0"
-        android:strokeLineCap="round"
-        android:pathData="M54,23 L54,28.5 M80.85,38.5 L76.1,41.2 M80.85,69.5 L76.1,66.8 M54,85 L54,79.5 M27.15,69.5 L31.9,66.8 M27.15,38.5 L31.9,41.2" />
-
-    <!-- Hollow Eclipse Outer Dynamic Luminous Ring -->
-    <path
-        android:pathData="M54,33 A21,21 0 1,1 53.99,33 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="33"
-                android:startY="33"
-                android:endX="75"
-                android:endY="75"
-                android:type="linear">
-                <item android:color="@android:color/system_accent1_100" android:offset="0.0" />
-                <item android:color="@android:color/system_accent1_300" android:offset="0.5" />
-                <item android:color="@android:color/system_accent3_400" android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Asymmetric Hollow Eclipse Void Cutout -->
-    <path
-        android:fillColor="@android:color/system_neutral1_900"
-        android:pathData="M57.2,38.2 A15.2,15.2 0 1,1 57.19,38.2 Z" />
-
-    <!-- Inner Secondary Dynamic Ring -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="@android:color/system_accent1_200"
-        android:strokeAlpha="0.55"
-        android:strokeWidth="1.4"
-        android:pathData="M57.2,42.2 A11.2,11.2 0 1,1 57.19,42.2 Z" />
-
-    <!-- Floating Singularity Core Orb -->
-    <path
-        android:fillColor="@android:color/system_accent1_100"
-        android:pathData="M48.5,48.5 A4.5,4.5 0 1,1 48.49,48.5 Z" />
+        android:fillColor="@color/hollow_logo_foreground"
+        android:pathData="M27,27 L42,18 L42,43 L57,34 L57,20 L72,11 L72,63 L57,72 L57,47 L42,56 L42,72 L27,81 Z" />
 </vector>

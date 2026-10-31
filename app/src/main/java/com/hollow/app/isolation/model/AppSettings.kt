@@ -41,6 +41,17 @@ data class AppSettings(
     val httpProxyEnabled: Boolean = true,
     val webViewProxyEnabled: Boolean = true,
     val trustAllCertificates: Boolean = false,
+    val vpnEngineMode: VpnEngineMode = VpnEngineMode.ANDROID_VPN,
+    /** Root TPROXY forwards IPv6 traffic in addition to IPv4. */
+    val rootIpv6Enabled: Boolean = true,
+    /** Route tethered clients arriving through hotspot interfaces. */
+    val rootHotspotEnabled: Boolean = false,
+    /** Route tethered clients arriving through USB/RNDIS interfaces. */
+    val rootUsbEnabled: Boolean = false,
+    /** Restore a connected root tunnel after BOOT_COMPLETED. */
+    val rootAutoStart: Boolean = false,
+    /** Optional HTTPS subscription URL containing VLESS links. */
+    val proxySubscriptionUrl: String = "",
     val hideProxyConnection: Boolean = true,
     val hideVpnConnection: Boolean = true,
     val vpnKillSwitchEnabled: Boolean = true,
@@ -79,6 +90,12 @@ object SettingsStore {
     private const val K_HTTP_PROXY = "http_proxy_enabled"
     private const val K_WEBVIEW_PROXY = "webview_proxy_enabled"
     private const val K_TRUST_ALL_CERTS = "trust_all_certs"
+    private const val K_VPN_ENGINE_MODE = "vpn_engine_mode"
+    private const val K_ROOT_IPV6 = "root_ipv6_enabled"
+    private const val K_ROOT_HOTSPOT = "root_hotspot_enabled"
+    private const val K_ROOT_USB = "root_usb_enabled"
+    private const val K_ROOT_AUTOSTART = "root_auto_start"
+    private const val K_PROXY_SUBSCRIPTION_URL = "proxy_subscription_url"
     private const val K_HIDE_PROXY_CONN = "hide_proxy_conn"
     private const val K_HIDE_VPN_CONN = "hide_vpn_conn"
     private const val K_VPN_KILL_SWITCH = "vpn_kill_switch"
@@ -117,6 +134,15 @@ object SettingsStore {
         } catch (_: IllegalArgumentException) {
             HollowIconTheme.DYNAMIC_MATERIAL_YOU
         }
+        val vpnEngineMode = try {
+            val storedMode = p.getString(K_VPN_ENGINE_MODE, VpnEngineMode.ANDROID_VPN.name)
+                ?: VpnEngineMode.ANDROID_VPN.name
+            VpnEngineMode.valueOf(
+                if (storedMode == "ROOT_NETPROXY") VpnEngineMode.ROOT_XRAY_TPROXY.name else storedMode
+            )
+        } catch (_: IllegalArgumentException) {
+            VpnEngineMode.ANDROID_VPN
+        }
         val storedCustomServers = p.getString(K_CUSTOM_SERVERS_JSON, "") ?: ""
         val customServers = decodeCustomServers(storedCustomServers)
         if (storedCustomServers.contains("\"usernameOrUuid\"") ||
@@ -148,6 +174,12 @@ object SettingsStore {
             httpProxyEnabled = p.getBoolean(K_HTTP_PROXY, true),
             webViewProxyEnabled = p.getBoolean(K_WEBVIEW_PROXY, true),
             trustAllCertificates = p.getBoolean(K_TRUST_ALL_CERTS, false),
+            vpnEngineMode = vpnEngineMode,
+            rootIpv6Enabled = p.getBoolean(K_ROOT_IPV6, true),
+            rootHotspotEnabled = p.getBoolean(K_ROOT_HOTSPOT, false),
+            rootUsbEnabled = p.getBoolean(K_ROOT_USB, false),
+            rootAutoStart = p.getBoolean(K_ROOT_AUTOSTART, false),
+            proxySubscriptionUrl = p.getString(K_PROXY_SUBSCRIPTION_URL, "") ?: "",
             hideProxyConnection = p.getBoolean(K_HIDE_PROXY_CONN, true),
             hideVpnConnection = p.getBoolean(K_HIDE_VPN_CONN, true),
             vpnKillSwitchEnabled = p.getBoolean(K_VPN_KILL_SWITCH, true),
@@ -180,6 +212,12 @@ object SettingsStore {
             .putBoolean(K_HTTP_PROXY, settings.httpProxyEnabled)
             .putBoolean(K_WEBVIEW_PROXY, settings.webViewProxyEnabled)
             .putBoolean(K_TRUST_ALL_CERTS, settings.trustAllCertificates)
+            .putString(K_VPN_ENGINE_MODE, settings.vpnEngineMode.name)
+            .putBoolean(K_ROOT_IPV6, settings.rootIpv6Enabled)
+            .putBoolean(K_ROOT_HOTSPOT, settings.rootHotspotEnabled)
+            .putBoolean(K_ROOT_USB, settings.rootUsbEnabled)
+            .putBoolean(K_ROOT_AUTOSTART, settings.rootAutoStart)
+            .putString(K_PROXY_SUBSCRIPTION_URL, settings.proxySubscriptionUrl)
             .putBoolean(K_HIDE_PROXY_CONN, settings.hideProxyConnection)
             .putBoolean(K_HIDE_VPN_CONN, settings.hideVpnConnection)
             .putBoolean(K_VPN_KILL_SWITCH, settings.vpnKillSwitchEnabled)
