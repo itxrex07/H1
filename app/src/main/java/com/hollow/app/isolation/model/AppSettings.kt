@@ -41,6 +41,7 @@ data class AppSettings(
     val httpProxyEnabled: Boolean = true,
     val webViewProxyEnabled: Boolean = true,
     val trustAllCertificates: Boolean = false,
+    val vpnEngineMode: VpnEngineMode = VpnEngineMode.ANDROID_VPN,
     val hideProxyConnection: Boolean = true,
     val hideVpnConnection: Boolean = true,
     val vpnKillSwitchEnabled: Boolean = true,
@@ -79,6 +80,7 @@ object SettingsStore {
     private const val K_HTTP_PROXY = "http_proxy_enabled"
     private const val K_WEBVIEW_PROXY = "webview_proxy_enabled"
     private const val K_TRUST_ALL_CERTS = "trust_all_certs"
+    private const val K_VPN_ENGINE_MODE = "vpn_engine_mode"
     private const val K_HIDE_PROXY_CONN = "hide_proxy_conn"
     private const val K_HIDE_VPN_CONN = "hide_vpn_conn"
     private const val K_VPN_KILL_SWITCH = "vpn_kill_switch"
@@ -117,6 +119,14 @@ object SettingsStore {
         } catch (_: IllegalArgumentException) {
             HollowIconTheme.DYNAMIC_MATERIAL_YOU
         }
+        val vpnEngineMode = try {
+            VpnEngineMode.valueOf(
+                p.getString(K_VPN_ENGINE_MODE, VpnEngineMode.ANDROID_VPN.name)
+                    ?: VpnEngineMode.ANDROID_VPN.name
+            )
+        } catch (_: IllegalArgumentException) {
+            VpnEngineMode.ANDROID_VPN
+        }
         val storedCustomServers = p.getString(K_CUSTOM_SERVERS_JSON, "") ?: ""
         val customServers = decodeCustomServers(storedCustomServers)
         if (storedCustomServers.contains("\"usernameOrUuid\"") ||
@@ -148,6 +158,7 @@ object SettingsStore {
             httpProxyEnabled = p.getBoolean(K_HTTP_PROXY, true),
             webViewProxyEnabled = p.getBoolean(K_WEBVIEW_PROXY, true),
             trustAllCertificates = p.getBoolean(K_TRUST_ALL_CERTS, false),
+            vpnEngineMode = vpnEngineMode,
             hideProxyConnection = p.getBoolean(K_HIDE_PROXY_CONN, true),
             hideVpnConnection = p.getBoolean(K_HIDE_VPN_CONN, true),
             vpnKillSwitchEnabled = p.getBoolean(K_VPN_KILL_SWITCH, true),
@@ -180,6 +191,7 @@ object SettingsStore {
             .putBoolean(K_HTTP_PROXY, settings.httpProxyEnabled)
             .putBoolean(K_WEBVIEW_PROXY, settings.webViewProxyEnabled)
             .putBoolean(K_TRUST_ALL_CERTS, settings.trustAllCertificates)
+            .putString(K_VPN_ENGINE_MODE, settings.vpnEngineMode.name)
             .putBoolean(K_HIDE_PROXY_CONN, settings.hideProxyConnection)
             .putBoolean(K_HIDE_VPN_CONN, settings.hideVpnConnection)
             .putBoolean(K_VPN_KILL_SWITCH, settings.vpnKillSwitchEnabled)

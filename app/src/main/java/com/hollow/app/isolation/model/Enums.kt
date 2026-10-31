@@ -86,6 +86,11 @@ enum class DisguiseIconPreset(
     DEFAULT("Original Icon", "")
 }
 
+enum class VpnEngineMode(val label: String, val description: String) {
+    ANDROID_VPN("Android VPN", "Uses Android VpnService and shows the system VPN indicator."),
+    ROOT_NETPROXY("Root TProxy", "Delegates to the installed NetProxy-Magisk module without creating a VPN interface.")
+}
+
 enum class AuditAction(val label: String, val isSevere: Boolean) {
     REDIRECTED("Kept Separate", false),
     ENCRYPTED("Saved Privately", false),

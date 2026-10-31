@@ -16,6 +16,8 @@ import com.hollow.app.isolation.model.PickerPolicy
 import com.hollow.app.isolation.model.VpnProxyPresets
 import com.hollow.app.isolation.model.VpnProxyServer
 import com.hollow.app.isolation.model.VpnConnectionState
+import com.hollow.app.isolation.model.VpnEngineMode
+import com.hollow.app.isolation.service.RootVpnEngine
 import com.hollow.app.isolation.service.HollowVpnService
 import com.hollow.app.isolation.mount.MountEntry
 import com.hollow.app.isolation.mount.MountManager
@@ -41,6 +43,62 @@ class SettingsViewModel(
 
     fun clearStatusMessage() {
         settingsRepository.clearStatusMessage()
+    }
+
+    fun selectVpnEngine(mode: VpnEngineMode) {
+        stopVpnIfActive()
+        settingsRepository.updateSettings {
+            it.copy(vpnEngineMode = mode, vpnConnectionState = VpnConnectionState.DISCONNECTED)
+        }
+        settingsRepository.postStatusMessage(
+            if (mode == VpnEngineMode.ROOT_NETPROXY) {
+                "Root TProxy mode selected; NetProxy-Magisk must be installed"
+            } else {
+                "Android VPN mode selected"
+            }
+        )
+    }
+
+    fun toggleRootVpn() {
+        if (settings.value.vpnConnectionState == VpnConnectionState.CONNECTED ||
+            settings.value.vpnConnectionState == VpnConnectionState.CONNECTING
+        ) {
+            viewModelScope.launch(Dispatchers.IO) {
+                RootVpnEngine.stop()
+                settingsRepository.updateSettings {
+                    it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.DISCONNECTED)
+                }
+                settingsRepository.postStatusMessage("Root TProxy stopped; network rules restored")
+            }
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsRepository.updateSettings { it.copy(vpnConnectionState = VpnConnectionState.CONNECTING) }
+            if (!RootVpnEngine.isAvailable()) {
+                settingsRepository.updateSettings {
+                    it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.ERROR)
+                }
+                settingsRepository.postStatusMessage(
+                    "Root TProxy unavailable. Install and enable NetProxy-Magisk v6.0.1 or newer."
+                )
+                return@launch
+            }
+            val result = RootVpnEngine.start()
+            if (result.exitCode == 0 && RootVpnEngine.isRunning()) {
+                settingsRepository.updateSettings {
+                    it.copy(vpnTunnelEnabled = true, vpnConnectionState = VpnConnectionState.CONNECTED)
+                }
+                settingsRepository.postStatusMessage("Root TProxy connected; Android VPN interface was not created")
+            } else {
+                settingsRepository.updateSettings {
+                    it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.ERROR)
+                }
+                settingsRepository.postStatusMessage(
+                    "Root TProxy failed: ${result.output.take(220).ifBlank { "check NetProxy logs" }}"
+                )
+            }
+        }
     }
 
     fun setDarkTheme(dark: Boolean) {
@@ -145,9 +203,22 @@ class SettingsViewModel(
         }
     }
 
+    fun refreshRootVpnState() {
+        if (settings.value.vpnEngineMode != VpnEngineMode.ROOT_NETPROXY) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val running = RootVpnEngine.isRunning()
+            settingsRepository.updateSettings {
+                it.copy(
+                    vpnTunnelEnabled = running,
+                    vpnConnectionState = if (running) VpnConnectionState.CONNECTED else VpnConnectionState.DISCONNECTED
+                )
+            }
+        }
+    }
+
     fun selectActiveProxyServer(proxyId: String) {
         if (settings.value.vpnTunnelEnabled) {
-            app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
+            stopVpnIfActive()
         }
         val next = settingsRepository.updateSettings {
             it.copy(
@@ -192,7 +263,7 @@ class SettingsViewModel(
     fun deleteCustomProxyServer(proxyId: String) {
         val current = settings.value
         if (current.vpnTunnelEnabled && current.activeProxyServerId == proxyId) {
-            app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
+            stopVpnIfActive()
         }
         val remainingCustom = current.customProxyServers.filterNot { it.id == proxyId }
         val nextActive = if (current.activeProxyServerId == proxyId) {
@@ -318,7 +389,11 @@ class SettingsViewModel(
 
     private fun stopVpnIfActive() {
         if (!settings.value.vpnTunnelEnabled) return
-        app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
+        if (settings.value.vpnEngineMode == VpnEngineMode.ROOT_NETPROXY) {
+            viewModelScope.launch(Dispatchers.IO) { RootVpnEngine.stop() }
+        } else {
+            app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
+        }
         settingsRepository.updateSettings {
             it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.DISCONNECTED)
         }
