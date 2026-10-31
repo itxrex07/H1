@@ -183,8 +183,15 @@ object MountManager {
 
     // ---- Volumes ---------------------------------------------------------------------------
 
-    fun volumeDir(context: Context, packageName: String): File =
-        File(context.filesDir, "vaults/$packageName/storage")
+    /**
+     * Canonical per-app private storage. The LSPosed fallback writes to this app-owned directory;
+     * root mode bind-mounts the very same directory over shared storage. Android's app UID boundary
+     * keeps it inaccessible to other ordinary apps.
+     */
+    fun volumeDir(context: Context, packageName: String): File {
+        requirePackageName(packageName)
+        return File("/data/user/0/$packageName/files/isovault_storage")
+    }
 
     private fun requirePackageName(packageName: String) {
         require(Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$").matches(packageName)) {
@@ -211,13 +218,19 @@ object MountManager {
         }
     """.trimIndent()
 
-    private fun attachShell(packageName: String, volume: String): String = commonShell(packageName, volume) + """
+    private fun attachShell(context: Context, packageName: String, volume: String): String = commonShell(packageName, volume) + """
 
         APP_DATA="/data/user/0/${'$'}PKG"
         [ -d "${'$'}APP_DATA" ] || APP_DATA="/data/data/${'$'}PKG"
         [ -d "${'$'}APP_DATA" ] || { echo "ERROR: ${'$'}PKG is not installed for user 0"; exit 2; }
         UID_APP=${'$'}(stat -c %u "${'$'}APP_DATA")
         CTX=${'$'}(ls -dZ "${'$'}APP_DATA" | awk '{print ${'$'}1}')
+        LEGACY='${File(context.filesDir, "vaults/$packageName/storage").absolutePath}'
+        if [ ! -e "${'$'}VOL" ] && [ -d "${'$'}LEGACY" ] && [ ! -L "${'$'}LEGACY" ]; then
+          mkdir -p "${'$'}(dirname "${'$'}VOL")" || exit 3
+          mv "${'$'}LEGACY" "${'$'}VOL" || exit 3
+          echo "Migrated the previous volume into the app-private drive."
+        fi
         mkdir -p "${'$'}VOL" "${'$'}VOL/Android/data/${'$'}PKG" "${'$'}VOL/Android/media/${'$'}PKG" || exit 3
         : > "${'$'}MARK"
         chown -R "${'$'}UID_APP:${'$'}UID_APP" "${'$'}VOL" || exit 4
@@ -285,8 +298,7 @@ object MountManager {
     fun attachVolume(context: Context, packageName: String): MountExecutionResult {
         requirePackageName(packageName)
         return synchronized(lockFor(packageName)) {
-            File(context.filesDir, "vaults/$packageName").mkdirs()
-            execute("attach $packageName", attachShell(packageName, volumeDir(context, packageName).absolutePath))
+            execute("attach $packageName", attachShell(context, packageName, volumeDir(context, packageName).absolutePath))
         }
     }
 
@@ -363,11 +375,11 @@ object MountManager {
     private fun failure(label: String, message: String, code: Int = 1) =
         MountExecutionResult(isSuccess = false, command = label, output = message, exitCode = code)
 
-    /** The volume directory, only if it really is <filesDir>/vaults/<pkg>/storage (no symlink tricks). */
+    /** The volume directory, only if it resolves to the exact target app-private storage path. */
     private fun safeVolume(context: Context, packageName: String): File? {
-        val expected = File(File(context.filesDir.canonicalPath), "vaults/$packageName/storage").path
+        val expected = "/data/user/0/$packageName/files/isovault_storage"
         val actual = volumeDir(context, packageName)
-        return if (actual.canonicalPath == expected) actual else null
+        return try { if (actual.canonicalPath == expected) actual else null } catch (_: Exception) { null }
     }
 
     /** Stops the app and fails unless it is really gone. */
@@ -544,16 +556,20 @@ object MountManager {
     fun purgeVolume(context: Context, packageName: String): MountExecutionResult {
         requirePackageName(packageName)
         return synchronized(lockFor(packageName)) {
-            val base = File(context.filesDir, "vaults/$packageName")
-            val expected = File(File(context.filesDir.canonicalPath), "vaults/$packageName").path
-            if (base.canonicalPath != expected) {
+            val volume = volumeDir(context, packageName)
+            val expected = "/data/user/0/$packageName/files/isovault_storage"
+            if (volume.canonicalPath != expected) {
                 failure("purge $packageName", "Unexpected path, refusing to delete.")
             } else {
-                val script = stopAppShell(packageName, volumeDir(context, packageName).absolutePath) + "\n" +
-                    "BASE='${base.absolutePath}'\n" +
-                    "[ ! -L \"${'$'}BASE\" ] || { echo 'ERROR: refusing to delete a symlink'; exit 7; }\n" +
+                val archiveBase = File(context.filesDir, "vaults/$packageName")
+                val script = stopAppShell(packageName, volume.absolutePath) + "\n" +
+                    "VOL='${volume.absolutePath}'\n" +
+                    "[ ! -L \"${'$'}VOL\" ] || { echo 'ERROR: refusing to delete a symlink'; exit 7; }\n" +
+                    "rm -rf \"${'$'}VOL\"\n" +
+                    "BASE='${archiveBase.absolutePath}'\n" +
+                    "[ ! -L \"${'$'}BASE\" ] || { echo 'ERROR: refusing to delete archive symlink'; exit 7; }\n" +
                     "rm -rf \"${'$'}BASE\"\n" +
-                    "[ ! -e \"${'$'}BASE\" ] && echo purged || { echo 'ERROR: not fully deleted'; exit 10; }\n"
+                    "[ ! -e \"${'$'}VOL\" ] && [ ! -e \"${'$'}BASE\" ] && echo purged || { echo 'ERROR: not fully deleted'; exit 10; }\n"
                 execute("purge $packageName", script, LONG_TIMEOUT_SECONDS)
             }
         }
@@ -599,7 +615,7 @@ object MountManager {
         sb.appendLine("  [ -d \"\$app\" ] || return 1")
         sb.appendLine("  uid=\$(stat -c %u \"\$app\")")
         sb.appendLine("  ctx=\$(ls -dZ \"\$app\" | awk '{print \$1}')")
-        sb.appendLine("  mgr=\$(stat -c %u '${context.filesDir.absolutePath}'); mkdir -p \"\$(dirname \"\$vol\")\"; chown \"\$mgr:\$mgr\" \"\$(dirname \"\$vol\")\"")
+        sb.appendLine("  mkdir -p \"\$(dirname \"\$vol\")\"")
         sb.appendLine("  mkdir -p \"\$vol\" \"\$vol/Android/data/\$pkg\" \"\$vol/Android/media/\$pkg\"")
         sb.appendLine("  : > \"\$vol/$VOLUME_MARKER\"")
         sb.appendLine("  chown -R \"\$uid:\$uid\" \"\$vol\"; chmod 700 \"\$vol\"")

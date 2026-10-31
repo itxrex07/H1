@@ -41,8 +41,9 @@ object RootFileBrowser {
     private fun guard(context: Context, packageName: String, source: FileSource, rel: String): String {
         val base = baseDir(context, packageName, source)
         val expectedBase = when (source) {
-            // The parent of the volume folder is owned by the manager, so the app cannot redirect it.
-            FileSource.VOLUME -> shellQuote(File(context.filesDir.canonicalPath, "vaults/$packageName/storage").path)
+            // Trust-anchor the path at the target app's private data directory. The app may write
+            // inside the volume, but a symlinked volume root is never accepted as its own base.
+            FileSource.VOLUME -> "\"\$(realpath /data/user/0/$packageName 2>/dev/null)\"" + shellQuote("/files/isovault_storage")
             // The app owns files/IsoVault_Sandbox, so it is compared against the trusted anchor
             // /data/user/0/<pkg>: a symlink planted anywhere below it changes the resolved path.
             FileSource.SANDBOX -> "\"\$(realpath /data/user/0/$packageName 2>/dev/null)\"" + shellQuote("/files/IsoVault_Sandbox")

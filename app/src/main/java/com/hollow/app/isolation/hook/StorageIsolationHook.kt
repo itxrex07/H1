@@ -1437,6 +1437,7 @@ class StorageIsolationHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
             return false
         }
         if (norm.contains("/IsoVault_Sandbox") ||
+            norm.contains("/isovault_storage") ||
             norm.contains("/hollow_drive") ||
             norm.contains("/hollow_drives") ||
             norm.contains("/Hollow_Workspace") ||
@@ -1486,41 +1487,26 @@ class StorageIsolationHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
     }
 
     private fun getOrCreateSandboxRoot(pkg: String): File {
-        val rule = try { resolveRuleForPackage(pkg) } catch (_: Throwable) { null }
-        val mode = rule?.mode ?: IsolationMode.SHARED_WORKSPACE
         val app = try { AndroidAppHelper.currentApplication() } catch (_: Throwable) { null }
-
-        val rootDir = if (mode == IsolationMode.SHARED_WORKSPACE) {
-            // Unified private Hollow Drive for all apps
-            val candidateShared = File("/data/user/0/$MODULE_PKG/files/hollow_drive")
-            val candidateReady = try {
-                if (!candidateShared.exists()) candidateShared.mkdirs()
-                candidateShared.exists() && candidateShared.canWrite()
-            } catch (_: Throwable) { false }
-
-            if (candidateReady) {
-                candidateShared
-            } else {
-                val fallbackBase = if (app != null) File(app.filesDir, "hollow_drive")
-                                   else File("/data/user/0/$pkg/files/hollow_drive")
-                fallbackBase.apply { mkdirs() }
-            }
+        // Every isolated app gets its own normal app-private directory. This is also the source
+        // used by MountManager, so switching between hook and root mode cannot split its files.
+        val rootDir = if (app != null) {
+            File(app.filesDir, "isovault_storage")
         } else {
-            // Dedicated per-app separate drive
-            val candidateSeparate = File("/data/user/0/$MODULE_PKG/files/hollow_drives/$pkg")
-            val candidateReady = try {
-                if (!candidateSeparate.exists()) candidateSeparate.mkdirs()
-                candidateSeparate.exists() && candidateSeparate.canWrite()
-            } catch (_: Throwable) { false }
-
-            if (candidateReady) {
-                candidateSeparate
-            } else {
-                val fallbackBase = if (app != null) File(app.filesDir, "hollow_drives/$pkg")
-                                   else File("/data/user/0/$pkg/files/hollow_drives/$pkg")
-                fallbackBase.apply { mkdirs() }
+            File("/data/user/0/$pkg/files/isovault_storage")
+        }
+        if (!rootDir.exists() && app != null) {
+            // Keep data created by older hook-only builds instead of silently starting an empty drive.
+            val legacyDirs = listOf(File(app.filesDir, "hollow_drives/$pkg"), File(app.filesDir, "hollow_drive"))
+            val legacy = legacyDirs.firstOrNull {
+                it.isDirectory && try { it.canonicalFile == it.absoluteFile } catch (_: Throwable) { false }
+            }
+            if (legacy != null) {
+                rootDir.parentFile?.mkdirs()
+                legacy.renameTo(rootDir)
             }
         }
+        rootDir.mkdirs()
 
         try {
             val nomedia = File(rootDir, ".nomedia")
