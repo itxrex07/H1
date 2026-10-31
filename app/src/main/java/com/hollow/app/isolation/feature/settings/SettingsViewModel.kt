@@ -25,6 +25,8 @@ import com.hollow.app.isolation.pkg.InstalledAppInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import android.util.Base64
+import java.net.URL
 
 class SettingsViewModel(
     private val app: Application,
@@ -84,7 +86,27 @@ class SettingsViewModel(
                 )
                 return@launch
             }
-            val result = RootVpnEngine.start(app, settings.value.activeServer)
+            val current = settings.value
+            val selectedPackages = configRepository.configs.value
+                .filter { it.vpnProxyEnabled }
+                .map { it.packageName }
+                .toSet()
+            if (!current.connectWholeDevice && selectedPackages.isEmpty()) {
+                settingsRepository.updateSettings { it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.ERROR) }
+                settingsRepository.postStatusMessage("Select apps or enable whole-device routing before starting root TProxy")
+                return@launch
+            }
+            val result = RootVpnEngine.start(
+                app,
+                current.activeServer,
+                RootVpnEngine.RouteOptions(
+                    wholeDevice = current.connectWholeDevice,
+                    selectedPackages = selectedPackages,
+                    ipv6Enabled = current.rootIpv6Enabled,
+                    hotspotEnabled = current.rootHotspotEnabled,
+                    usbEnabled = current.rootUsbEnabled
+                )
+            )
             if (result.exitCode == 0 && RootVpnEngine.isRunning()) {
                 settingsRepository.updateSettings {
                     it.copy(vpnTunnelEnabled = true, vpnConnectionState = VpnConnectionState.CONNECTED)
@@ -107,6 +129,31 @@ class SettingsViewModel(
 
     fun setDynamicColor(dynamic: Boolean) {
         settingsRepository.updateSettings { it.copy(dynamicColor = dynamic) }
+    }
+
+    fun setRootIpv6Enabled(enabled: Boolean) {
+        settingsRepository.updateSettings { it.copy(rootIpv6Enabled = enabled) }
+        if (settings.value.vpnTunnelEnabled && settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+            settingsRepository.postStatusMessage("Reconnect root TProxy to apply IPv6 routing")
+        }
+    }
+
+    fun setRootHotspotEnabled(enabled: Boolean) {
+        settingsRepository.updateSettings { it.copy(rootHotspotEnabled = enabled) }
+        if (settings.value.vpnTunnelEnabled && settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+            settingsRepository.postStatusMessage("Reconnect root TProxy to apply hotspot routing")
+        }
+    }
+
+    fun setRootUsbEnabled(enabled: Boolean) {
+        settingsRepository.updateSettings { it.copy(rootUsbEnabled = enabled) }
+        if (settings.value.vpnTunnelEnabled && settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+            settingsRepository.postStatusMessage("Reconnect root TProxy to apply USB routing")
+        }
+    }
+
+    fun setRootAutoStart(enabled: Boolean) {
+        settingsRepository.updateSettings { it.copy(rootAutoStart = enabled) }
     }
 
     fun setRootVolumesEnabled(enabled: Boolean) {
@@ -247,6 +294,40 @@ class SettingsViewModel(
         configRepository.syncStealthRulesToHooks()
         settingsRepository.postStatusMessage("Imported ${parsed.protocol.label} node: ${parsed.name}")
         return true
+    }
+
+    fun setProxySubscriptionUrl(url: String) {
+        settingsRepository.updateSettings { it.copy(proxySubscriptionUrl = url.trim()) }
+    }
+
+    fun refreshProxySubscription() {
+        val subscriptionUrl = settings.value.proxySubscriptionUrl.trim()
+        if (subscriptionUrl.isBlank()) {
+            settingsRepository.postStatusMessage("Add a subscription URL first")
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val raw = URL(subscriptionUrl).openStream().bufferedReader().use { it.readText() }
+                val decoded = if (raw.contains("vless://", ignoreCase = true)) raw else {
+                    runCatching { String(Base64.decode(raw.filterNot { it.isWhitespace() }, Base64.DEFAULT)) }.getOrDefault(raw)
+                }
+                val nodes = decoded.split(Regex("\\s+|\\r?\\n"))
+                    .mapNotNull(VpnProxyPresets::parseUri)
+                    .distinctBy { it.shareUri }
+                if (nodes.isEmpty()) {
+                    settingsRepository.postStatusMessage("Subscription contained no supported VLESS TCP/RAW nodes")
+                    return@launch
+                }
+                val merged = (settings.value.customProxyServers + nodes).distinctBy { it.shareUri }
+                settingsRepository.updateSettings {
+                    it.copy(customProxyServers = merged, activeProxyServerId = it.activeProxyServerId.takeIf { id -> merged.any { node -> node.id == id } } ?: nodes.first().id)
+                }
+                settingsRepository.postStatusMessage("Subscription refreshed: ${nodes.size} supported node${if (nodes.size == 1) "" else "s"}")
+            } catch (failure: Exception) {
+                settingsRepository.postStatusMessage("Subscription refresh failed: ${failure.message?.take(160) ?: "network error"}")
+            }
+        }
     }
 
     fun addCustomProxyServer(server: VpnProxyServer) {

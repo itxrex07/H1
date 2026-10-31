@@ -783,6 +783,37 @@ fun VpnProxyScreen(
                             onCheckedChange = { viewModel.toggleConnectWholeDevice(it) }
                         )
 
+                        if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                            VpnOptionRow(
+                                title = "Root IPv6 routing",
+                                description = "Apply matching ip6tables and policy-routing rules",
+                                checked = settings.rootIpv6Enabled,
+                                onCheckedChange = { viewModel.setRootIpv6Enabled(it) }
+                            )
+                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                            VpnOptionRow(
+                                title = "Hotspot clients",
+                                description = "Route Wi-Fi tethering traffic through root TPROXY",
+                                checked = settings.rootHotspotEnabled,
+                                onCheckedChange = { viewModel.setRootHotspotEnabled(it) }
+                            )
+                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                            VpnOptionRow(
+                                title = "USB tethering clients",
+                                description = "Route RNDIS/USB tethering traffic through root TPROXY",
+                                checked = settings.rootUsbEnabled,
+                                onCheckedChange = { viewModel.setRootUsbEnabled(it) }
+                            )
+                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                            VpnOptionRow(
+                                title = "Restore root tunnel after reboot",
+                                description = "Start H1 Xray and restore routing after BOOT_COMPLETED",
+                                checked = settings.rootAutoStart,
+                                onCheckedChange = { viewModel.setRootAutoStart(it) }
+                            )
+                        }
+
                         HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
 
                         VpnOptionRow(
@@ -1139,6 +1170,7 @@ fun VpnProxyScreen(
     // IMPORT NODE URI / SOCKS5 DIALOG
     if (showImportDialog) {
         var rawUri by remember { mutableStateOf("") }
+        var subscriptionUrl by remember { mutableStateOf(settings.proxySubscriptionUrl) }
         var isError by remember { mutableStateOf(false) }
 
         AlertDialog(
@@ -1179,6 +1211,28 @@ fun VpnProxyScreen(
                             fontSize = 11.sp,
                             fontFamily = JakartaFontFamily
                         )
+                    }
+                    HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                    OutlinedTextField(
+                        value = subscriptionUrl,
+                        onValueChange = { subscriptionUrl = it },
+                        placeholder = { Text("https://…/subscription", fontSize = 12.sp) },
+                        label = { Text("VLESS subscription URL", fontSize = 12.sp) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.setProxySubscriptionUrl(subscriptionUrl)
+                            viewModel.refreshProxySubscription()
+                            showImportDialog = false
+                        },
+                        enabled = subscriptionUrl.isNotBlank(),
+                        shape = RoundedCornerShape(50),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Refresh subscription", fontFamily = JakartaFontFamily)
                     }
                 }
             },
