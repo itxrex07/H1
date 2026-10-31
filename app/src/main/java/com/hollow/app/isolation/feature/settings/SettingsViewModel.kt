@@ -1,7 +1,6 @@
 package com.hollow.app.isolation.feature.settings
 
 import android.app.Application
-import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,9 +15,7 @@ import com.hollow.app.isolation.model.PickerPolicy
 import com.hollow.app.isolation.model.VpnProxyPresets
 import com.hollow.app.isolation.model.VpnProxyServer
 import com.hollow.app.isolation.model.VpnConnectionState
-import com.hollow.app.isolation.model.VpnEngineMode
 import com.hollow.app.isolation.service.RootVpnEngine
-import com.hollow.app.isolation.service.HollowVpnService
 import com.hollow.app.isolation.mount.MountEntry
 import com.hollow.app.isolation.mount.MountManager
 import com.hollow.app.isolation.pkg.InstalledAppInfo
@@ -45,20 +42,6 @@ class SettingsViewModel(
 
     fun clearStatusMessage() {
         settingsRepository.clearStatusMessage()
-    }
-
-    fun selectVpnEngine(mode: VpnEngineMode) {
-        stopVpnIfActive()
-        settingsRepository.updateSettings {
-            it.copy(vpnEngineMode = mode, vpnConnectionState = VpnConnectionState.DISCONNECTED)
-        }
-        settingsRepository.postStatusMessage(
-            if (mode == VpnEngineMode.ROOT_XRAY_TPROXY) {
-                "Root TProxy mode selected; H1 will use its own Xray engine"
-            } else {
-                "Android VPN mode selected"
-            }
-        )
     }
 
     fun toggleRootVpn() {
@@ -133,21 +116,21 @@ class SettingsViewModel(
 
     fun setRootIpv6Enabled(enabled: Boolean) {
         settingsRepository.updateSettings { it.copy(rootIpv6Enabled = enabled) }
-        if (settings.value.vpnTunnelEnabled && settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+        if (settings.value.vpnTunnelEnabled) {
             settingsRepository.postStatusMessage("Reconnect root TProxy to apply IPv6 routing")
         }
     }
 
     fun setRootHotspotEnabled(enabled: Boolean) {
         settingsRepository.updateSettings { it.copy(rootHotspotEnabled = enabled) }
-        if (settings.value.vpnTunnelEnabled && settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+        if (settings.value.vpnTunnelEnabled) {
             settingsRepository.postStatusMessage("Reconnect root TProxy to apply hotspot routing")
         }
     }
 
     fun setRootUsbEnabled(enabled: Boolean) {
         settingsRepository.updateSettings { it.copy(rootUsbEnabled = enabled) }
-        if (settings.value.vpnTunnelEnabled && settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+        if (settings.value.vpnTunnelEnabled) {
             settingsRepository.postStatusMessage("Reconnect root TProxy to apply USB routing")
         }
     }
@@ -251,7 +234,6 @@ class SettingsViewModel(
     }
 
     fun refreshRootVpnState() {
-        if (settings.value.vpnEngineMode != VpnEngineMode.ROOT_XRAY_TPROXY) return
         viewModelScope.launch(Dispatchers.IO) {
             val running = RootVpnEngine.isRunning()
             settingsRepository.updateSettings {
@@ -470,11 +452,7 @@ class SettingsViewModel(
 
     private fun stopVpnIfActive() {
         if (!settings.value.vpnTunnelEnabled) return
-        if (settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
-            viewModelScope.launch(Dispatchers.IO) { RootVpnEngine.stop() }
-        } else {
-            app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
-        }
+        viewModelScope.launch(Dispatchers.IO) { RootVpnEngine.stop() }
         settingsRepository.updateSettings {
             it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.DISCONNECTED)
         }

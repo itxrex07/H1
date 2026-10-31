@@ -1,13 +1,7 @@
 package com.hollow.app.isolation.feature.vpn
 
-import android.app.Activity
-import android.content.Intent
-import android.net.VpnService
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -98,9 +92,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hollow.app.isolation.feature.settings.SettingsViewModel
-import com.hollow.app.isolation.service.HollowVpnService
 import com.hollow.app.isolation.model.VpnConnectionState
-import com.hollow.app.isolation.model.VpnEngineMode
 import com.hollow.app.isolation.model.VpnProtocol
 import com.hollow.app.isolation.model.VpnProxyServer
 import com.hollow.app.isolation.pkg.InstalledAppInfo
@@ -123,20 +115,10 @@ fun VpnProxyScreen(
     val isConnected = settings.vpnConnectionState == VpnConnectionState.CONNECTED
     val isConnecting = settings.vpnConnectionState == VpnConnectionState.CONNECTING
     val activeServer = settings.activeServer
-    val vpnPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val intent = Intent(context, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_CONNECT)
-            ContextCompat.startForegroundService(context, intent)
-        } else {
-            Toast.makeText(context, "VPN permission was not granted.", Toast.LENGTH_SHORT).show()
-        }
-    }
     val allServers = settings.allProxyServers
     val routedAppsCount = remember(allApps) { allApps.count { it.vpnProxyEnabled } }
 
-    LaunchedEffect(settings.vpnEngineMode) {
+    LaunchedEffect(Unit) {
         viewModel.refreshRootVpnState()
     }
 
@@ -146,14 +128,6 @@ fun VpnProxyScreen(
 
     fun toggleVpn() {
         if (isConnected || isConnecting) {
-            if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
-                viewModel.toggleRootVpn()
-            } else {
-                context.startService(Intent(context, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
-            }
-            return
-        }
-        if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
             viewModel.toggleRootVpn()
             return
         }
@@ -167,15 +141,7 @@ fun VpnProxyScreen(
             showSplitTunnelSheet = true
             return
         }
-        val permissionIntent = VpnService.prepare(context)
-        if (permissionIntent == null) {
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_CONNECT)
-            )
-        } else {
-            vpnPermissionLauncher.launch(permissionIntent)
-        }
+        viewModel.toggleRootVpn()
     }
 
     // Navigation back handler
@@ -328,29 +294,16 @@ fun VpnProxyScreen(
                             fontFamily = JakartaFontFamily
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilterChip(
-                                selected = settings.vpnEngineMode == VpnEngineMode.ANDROID_VPN,
-                                onClick = { viewModel.selectVpnEngine(VpnEngineMode.ANDROID_VPN) },
-                                label = { Text("Android VPN", fontSize = 12.sp, fontFamily = JakartaFontFamily) },
-                                modifier = Modifier.weight(1f)
-                            )
-                            FilterChip(
-                                selected = settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY,
-                                onClick = { viewModel.selectVpnEngine(VpnEngineMode.ROOT_XRAY_TPROXY) },
-                                label = { Text("Root TProxy", fontSize = 12.sp, fontFamily = JakartaFontFamily) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                            Text(
-                                text = if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
-                                "Uses H1's own Xray + root TPROXY engine. No Android VPN interface or VPN key icon is created."
-                            } else {
-                                "Uses Hollow's built-in VLESS tunnel through Android VpnService."
-                            },
+                        Text(
+                            text = "ROOT TPROXY",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = scheme.onSurface,
+                            fontFamily = JakartaFontFamily
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Uses H1's Xray + root TPROXY engine. No Android VPN interface or VPN permission prompt is used.",
                             fontSize = 11.sp,
                             color = scheme.onSurfaceVariant,
                             fontFamily = JakartaFontFamily
@@ -493,19 +446,11 @@ fun VpnProxyScreen(
                             fontFamily = JakartaFontFamily
                         )
                         Text(
-                                text = if (isConnected) {
-                                    if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
-                                        "H1 Xray • root TPROXY • system routing"
-                                    } else {
-                                        "${activeServer.name} • ${activeServer.protocol.badge} • ${activeServer.host}:${activeServer.port}"
-                                    }
-                                } else {
-                                    if (isConnecting) {
-                                        if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) "Starting H1 root Xray service"
-                                        else "Starting and testing the Xray tunnel"
-                                    }
-                                    else if (settings.vpnConnectionState == VpnConnectionState.ERROR) "No tunnel is active; traffic is direct"
-                                    else "No VPN tunnel is active"
+                            text = when {
+                                isConnected -> "H1 Xray • root TPROXY • system routing"
+                                isConnecting -> "Starting H1 root Xray service"
+                                settings.vpnConnectionState == VpnConnectionState.ERROR -> "No tunnel is active; traffic is direct"
+                                else -> "No VPN tunnel is active"
                             },
                             fontSize = 12.sp,
                             color = scheme.onSurfaceVariant,
@@ -513,7 +458,7 @@ fun VpnProxyScreen(
                         )
                         if (settings.vpnConnectionState == VpnConnectionState.ERROR) {
                             Text(
-                                text = statusMessage ?: "VPN connection failed. Review the imported VLESS link, Android VPN permission, and network.",
+                                text = statusMessage ?: "Root proxy connection failed. Check root access, the imported VLESS link, and network.",
                                 fontSize = 12.sp,
                                 color = scheme.error,
                                 maxLines = 4,
@@ -584,8 +529,7 @@ fun VpnProxyScreen(
                                         fontFamily = JakartaFontFamily
                                     )
                                     Text(
-                                        text = if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) "Root Rules"
-                                        else if (settings.connectWholeDevice) "Whole Device" else "$routedAppsCount Apps",
+                                        text = "Root Rules",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = scheme.onSurface,
@@ -778,41 +722,39 @@ fun VpnProxyScreen(
 
                         VpnOptionRow(
                             title = "Connect Whole Device",
-                            description = "Route all apps except Hollow through the Android VPN interface",
+                            description = "Route device traffic through H1's root TPROXY rules",
                             checked = settings.connectWholeDevice,
                             onCheckedChange = { viewModel.toggleConnectWholeDevice(it) }
                         )
 
-                        if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
-                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
-                            VpnOptionRow(
-                                title = "Root IPv6 routing",
-                                description = "Apply matching ip6tables and policy-routing rules",
-                                checked = settings.rootIpv6Enabled,
-                                onCheckedChange = { viewModel.setRootIpv6Enabled(it) }
-                            )
-                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
-                            VpnOptionRow(
-                                title = "Hotspot clients",
-                                description = "Route Wi-Fi tethering traffic through root TPROXY",
-                                checked = settings.rootHotspotEnabled,
-                                onCheckedChange = { viewModel.setRootHotspotEnabled(it) }
-                            )
-                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
-                            VpnOptionRow(
-                                title = "USB tethering clients",
-                                description = "Route RNDIS/USB tethering traffic through root TPROXY",
-                                checked = settings.rootUsbEnabled,
-                                onCheckedChange = { viewModel.setRootUsbEnabled(it) }
-                            )
-                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
-                            VpnOptionRow(
-                                title = "Restore root tunnel after reboot",
-                                description = "Start H1 Xray and restore routing after BOOT_COMPLETED",
-                                checked = settings.rootAutoStart,
-                                onCheckedChange = { viewModel.setRootAutoStart(it) }
-                            )
-                        }
+                        HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                        VpnOptionRow(
+                            title = "Root IPv6 routing",
+                            description = "Apply matching ip6tables and policy-routing rules",
+                            checked = settings.rootIpv6Enabled,
+                            onCheckedChange = { viewModel.setRootIpv6Enabled(it) }
+                        )
+                        HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                        VpnOptionRow(
+                            title = "Hotspot clients",
+                            description = "Route Wi-Fi tethering traffic through root TPROXY",
+                            checked = settings.rootHotspotEnabled,
+                            onCheckedChange = { viewModel.setRootHotspotEnabled(it) }
+                        )
+                        HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                        VpnOptionRow(
+                            title = "USB tethering clients",
+                            description = "Route RNDIS/USB tethering traffic through root TPROXY",
+                            checked = settings.rootUsbEnabled,
+                            onCheckedChange = { viewModel.setRootUsbEnabled(it) }
+                        )
+                        HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                        VpnOptionRow(
+                            title = "Restore root tunnel after reboot",
+                            description = "Start H1 Xray and restore routing after BOOT_COMPLETED",
+                            checked = settings.rootAutoStart,
+                            onCheckedChange = { viewModel.setRootAutoStart(it) }
+                        )
 
                         HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
 

@@ -41,7 +41,7 @@ data class AppSettings(
     val httpProxyEnabled: Boolean = true,
     val webViewProxyEnabled: Boolean = true,
     val trustAllCertificates: Boolean = false,
-    val vpnEngineMode: VpnEngineMode = VpnEngineMode.ANDROID_VPN,
+    val vpnEngineMode: VpnEngineMode = VpnEngineMode.ROOT_XRAY_TPROXY,
     /** Root TPROXY forwards IPv6 traffic in addition to IPv4. */
     val rootIpv6Enabled: Boolean = true,
     /** Route tethered clients arriving through hotspot interfaces. */
@@ -135,13 +135,13 @@ object SettingsStore {
             HollowIconTheme.DYNAMIC_MATERIAL_YOU
         }
         val vpnEngineMode = try {
-            val storedMode = p.getString(K_VPN_ENGINE_MODE, VpnEngineMode.ANDROID_VPN.name)
-                ?: VpnEngineMode.ANDROID_VPN.name
+            val storedMode = p.getString(K_VPN_ENGINE_MODE, VpnEngineMode.ROOT_XRAY_TPROXY.name)
+                ?: VpnEngineMode.ROOT_XRAY_TPROXY.name
             VpnEngineMode.valueOf(
                 if (storedMode == "ROOT_NETPROXY") VpnEngineMode.ROOT_XRAY_TPROXY.name else storedMode
             )
         } catch (_: IllegalArgumentException) {
-            VpnEngineMode.ANDROID_VPN
+            VpnEngineMode.ROOT_XRAY_TPROXY
         }
         val storedCustomServers = p.getString(K_CUSTOM_SERVERS_JSON, "") ?: ""
         val customServers = decodeCustomServers(storedCustomServers)

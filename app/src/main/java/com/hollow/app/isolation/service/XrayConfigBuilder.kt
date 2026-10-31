@@ -8,9 +8,9 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
-/** Creates the Xray-core config from the imported share link; no sample endpoint is supplied. */
+/** Creates the Xray-core configuration consumed by the root TPROXY engine. */
 internal object XrayConfigBuilder {
-    fun build(server: VpnProxyServer): String {
+    private fun buildBase(server: VpnProxyServer): String {
         require(server.protocol.name == "VLESS") { "Only VLESS nodes are supported by this tunnel engine." }
         val shareUri = server.shareUri.takeIf(String::isNotBlank)
             ?: throw IllegalArgumentException("Import a VLESS share link before connecting.")
@@ -83,13 +83,6 @@ internal object XrayConfigBuilder {
         }
         outbound.put("streamSettings", streamSettings)
 
-        val tunInbound = JSONObject()
-            .put("tag", "hollow-tun")
-            .put("protocol", "tun")
-            // An explicit name is required on Android. Without it Xray calls GetAvailableTunName(), which
-            // lists system interfaces via netlink; Android blocks that for apps, so config parsing fails with
-            // "fail to get system interface information". The real TUN fd comes from VpnService.
-            .put("settings", JSONObject().put("name", "xray0").put("mtu", 1500))
         val directOutbound = JSONObject()
             .put("tag", "direct")
             .put("protocol", "freedom")
@@ -101,14 +94,14 @@ internal object XrayConfigBuilder {
         return JSONObject()
             .put("log", JSONObject().put("loglevel", "warning"))
             .put("dns", JSONObject().put("servers", JSONArray().put("1.1.1.1").put("8.8.8.8")))
-            .put("inbounds", JSONArray().put(tunInbound))
+            .put("inbounds", JSONArray())
             .put("outbounds", JSONArray().put(outbound).put(directOutbound))
             .put("routing", JSONObject().put("domainStrategy", "AsIs").put("rules", JSONArray().put(route)))
             .toString()
     }
 
     fun buildRoot(server: VpnProxyServer, tcpPort: Int, udpPort: Int, dnsPort: Int): String {
-        val root = JSONObject(build(server))
+        val root = JSONObject(buildBase(server))
         val tproxyInbound = JSONObject()
             .put("tag", "hollow-tproxy")
             .put("port", tcpPort)
