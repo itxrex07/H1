@@ -107,6 +107,38 @@ internal object XrayConfigBuilder {
             .toString()
     }
 
+    fun buildRoot(server: VpnProxyServer, tcpPort: Int, udpPort: Int, dnsPort: Int): String {
+        val root = JSONObject(build(server))
+        val tproxyInbound = JSONObject()
+            .put("tag", "hollow-tproxy")
+            .put("port", tcpPort)
+            .put("protocol", "dokodemo-door")
+            .put("settings", JSONObject().put("network", "tcp,udp").put("followRedirect", true))
+            .put("sniffing", JSONObject().put("enabled", true).put("destOverride", JSONArray().put("http").put("tls").put("quic")))
+            .put("streamSettings", JSONObject().put("sockopt", JSONObject().put("tproxy", "tproxy")))
+        val dnsInbound = JSONObject()
+            .put("tag", "hollow-dns")
+            .put("port", dnsPort)
+            .put("protocol", "dokodemo-door")
+            .put("settings", JSONObject().put("address", "1.1.1.1").put("port", 53).put("network", "tcp,udp"))
+        root.put("inbounds", JSONArray().put(tproxyInbound).put(dnsInbound))
+        root.put(
+            "routing",
+            JSONObject()
+                .put("domainStrategy", "AsIs")
+                .put(
+                    "rules",
+                    JSONArray().put(
+                        JSONObject()
+                            .put("type", "field")
+                            .put("inboundTag", JSONArray().put("hollow-tproxy").put("hollow-dns"))
+                            .put("outboundTag", "hollow-vless")
+                    )
+                )
+        )
+        return root.toString()
+    }
+
     private fun decode(value: String): String =
         URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8.name())
 }

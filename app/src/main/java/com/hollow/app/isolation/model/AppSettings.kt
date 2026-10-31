@@ -120,9 +120,10 @@ object SettingsStore {
             HollowIconTheme.DYNAMIC_MATERIAL_YOU
         }
         val vpnEngineMode = try {
+            val storedMode = p.getString(K_VPN_ENGINE_MODE, VpnEngineMode.ANDROID_VPN.name)
+                ?: VpnEngineMode.ANDROID_VPN.name
             VpnEngineMode.valueOf(
-                p.getString(K_VPN_ENGINE_MODE, VpnEngineMode.ANDROID_VPN.name)
-                    ?: VpnEngineMode.ANDROID_VPN.name
+                if (storedMode == "ROOT_NETPROXY") VpnEngineMode.ROOT_XRAY_TPROXY.name else storedMode
             )
         } catch (_: IllegalArgumentException) {
             VpnEngineMode.ANDROID_VPN

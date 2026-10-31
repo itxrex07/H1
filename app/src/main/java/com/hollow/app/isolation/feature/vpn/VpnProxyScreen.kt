@@ -146,14 +146,14 @@ fun VpnProxyScreen(
 
     fun toggleVpn() {
         if (isConnected || isConnecting) {
-            if (settings.vpnEngineMode == VpnEngineMode.ROOT_NETPROXY) {
+            if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
                 viewModel.toggleRootVpn()
             } else {
                 context.startService(Intent(context, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))
             }
             return
         }
-        if (settings.vpnEngineMode == VpnEngineMode.ROOT_NETPROXY) {
+        if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
             viewModel.toggleRootVpn()
             return
         }
@@ -339,15 +339,15 @@ fun VpnProxyScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
-                                selected = settings.vpnEngineMode == VpnEngineMode.ROOT_NETPROXY,
-                                onClick = { viewModel.selectVpnEngine(VpnEngineMode.ROOT_NETPROXY) },
+                                selected = settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY,
+                                onClick = { viewModel.selectVpnEngine(VpnEngineMode.ROOT_XRAY_TPROXY) },
                                 label = { Text("Root TProxy", fontSize = 12.sp, fontFamily = JakartaFontFamily) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
                             Text(
-                                text = if (settings.vpnEngineMode == VpnEngineMode.ROOT_NETPROXY) {
-                                "Uses the installed NetProxy-Magisk profile. No Android VPN interface or VPN key icon is created."
+                                text = if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+                                "Uses H1's own Xray + root TPROXY engine. No Android VPN interface or VPN key icon is created."
                             } else {
                                 "Uses Hollow's built-in VLESS tunnel through Android VpnService."
                             },
@@ -494,14 +494,14 @@ fun VpnProxyScreen(
                         )
                         Text(
                                 text = if (isConnected) {
-                                    if (settings.vpnEngineMode == VpnEngineMode.ROOT_NETPROXY) {
-                                        "NetProxy-Magisk • root TProxy • system routing"
+                                    if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+                                        "H1 Xray • root TPROXY • system routing"
                                     } else {
                                         "${activeServer.name} • ${activeServer.protocol.badge} • ${activeServer.host}:${activeServer.port}"
                                     }
                                 } else {
                                     if (isConnecting) {
-                                        if (settings.vpnEngineMode == VpnEngineMode.ROOT_NETPROXY) "Starting NetProxy root service"
+                                        if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) "Starting H1 root Xray service"
                                         else "Starting and testing the Xray tunnel"
                                     }
                                     else if (settings.vpnConnectionState == VpnConnectionState.ERROR) "No tunnel is active; traffic is direct"
@@ -584,7 +584,7 @@ fun VpnProxyScreen(
                                         fontFamily = JakartaFontFamily
                                     )
                                     Text(
-                                        text = if (settings.vpnEngineMode == VpnEngineMode.ROOT_NETPROXY) "Module Rules"
+                                        text = if (settings.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) "Root Rules"
                                         else if (settings.connectWholeDevice) "Whole Device" else "$routedAppsCount Apps",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,

@@ -51,8 +51,8 @@ class SettingsViewModel(
             it.copy(vpnEngineMode = mode, vpnConnectionState = VpnConnectionState.DISCONNECTED)
         }
         settingsRepository.postStatusMessage(
-            if (mode == VpnEngineMode.ROOT_NETPROXY) {
-                "Root TProxy mode selected; NetProxy-Magisk must be installed"
+            if (mode == VpnEngineMode.ROOT_XRAY_TPROXY) {
+                "Root TProxy mode selected; H1 will use its own Xray engine"
             } else {
                 "Android VPN mode selected"
             }
@@ -80,11 +80,11 @@ class SettingsViewModel(
                     it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.ERROR)
                 }
                 settingsRepository.postStatusMessage(
-                    "Root TProxy unavailable. Install and enable NetProxy-Magisk v6.0.1 or newer."
+                    "Root TProxy unavailable. Grant H1 root access and retry."
                 )
                 return@launch
             }
-            val result = RootVpnEngine.start()
+            val result = RootVpnEngine.start(app, settings.value.activeServer)
             if (result.exitCode == 0 && RootVpnEngine.isRunning()) {
                 settingsRepository.updateSettings {
                     it.copy(vpnTunnelEnabled = true, vpnConnectionState = VpnConnectionState.CONNECTED)
@@ -95,7 +95,7 @@ class SettingsViewModel(
                     it.copy(vpnTunnelEnabled = false, vpnConnectionState = VpnConnectionState.ERROR)
                 }
                 settingsRepository.postStatusMessage(
-                    "Root TProxy failed: ${result.output.take(220).ifBlank { "check NetProxy logs" }}"
+                    "Root TProxy failed: ${result.output.take(220).ifBlank { "check the H1 root Xray log" }}"
                 )
             }
         }
@@ -204,7 +204,7 @@ class SettingsViewModel(
     }
 
     fun refreshRootVpnState() {
-        if (settings.value.vpnEngineMode != VpnEngineMode.ROOT_NETPROXY) return
+        if (settings.value.vpnEngineMode != VpnEngineMode.ROOT_XRAY_TPROXY) return
         viewModelScope.launch(Dispatchers.IO) {
             val running = RootVpnEngine.isRunning()
             settingsRepository.updateSettings {
@@ -389,7 +389,7 @@ class SettingsViewModel(
 
     private fun stopVpnIfActive() {
         if (!settings.value.vpnTunnelEnabled) return
-        if (settings.value.vpnEngineMode == VpnEngineMode.ROOT_NETPROXY) {
+        if (settings.value.vpnEngineMode == VpnEngineMode.ROOT_XRAY_TPROXY) {
             viewModelScope.launch(Dispatchers.IO) { RootVpnEngine.stop() }
         } else {
             app.startService(Intent(app, HollowVpnService::class.java).setAction(HollowVpnService.ACTION_DISCONNECT))

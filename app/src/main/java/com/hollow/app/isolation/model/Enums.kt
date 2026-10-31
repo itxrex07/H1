@@ -88,7 +88,7 @@ enum class DisguiseIconPreset(
 
 enum class VpnEngineMode(val label: String, val description: String) {
     ANDROID_VPN("Android VPN", "Uses Android VpnService and shows the system VPN indicator."),
-    ROOT_NETPROXY("Root TProxy", "Delegates to the installed NetProxy-Magisk module without creating a VPN interface.")
+    ROOT_XRAY_TPROXY("Root TProxy", "Runs H1's own Xray and root transparent-proxy engine without creating a VPN interface.")
 }
 
 enum class AuditAction(val label: String, val isSevere: Boolean) {
