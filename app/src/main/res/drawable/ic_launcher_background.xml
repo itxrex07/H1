@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Deep Obsidian Void Base -->
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108"
+                android:type="linear">
+                <item android:color="#050811" android:offset="0.0" />
+                <item android:color="#0B1325" android:offset="0.55" />
+                <item android:color="#111C38" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Radial Ambient Portal Glow -->
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="48"
+                android:type="radial">
+                <item android:color="#3800E5FF" android:offset="0.0" />
+                <item android:color="#186366F1" android:offset="0.55" />
+                <item android:color="#00050811" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle Concentric Isometric Grid Rings -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#1438BDF8"
+        android:strokeWidth="0.7"
+        android:pathData="M54,12 A42,42 0 1,1 53.99,12 Z M54,20 A34,34 0 1,1 53.99,20 Z" />
+</vector>

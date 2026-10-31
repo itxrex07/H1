@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="xposed_scope">
+        <item>android</item>
+        <item>system</item>
+        <item>com.android.systemui</item>
+        <item>com.android.settings</item>
+        <item>com.android.vending</item>
+        <item>com.android.launcher</item>
+        <item>com.android.launcher3</item>
+        <item>com.google.android.apps.nexuslauncher</item>
+        <item>com.oppo.launcher</item>
+        <item>net.oneplus.launcher</item>
+        <item>com.miui.home</item>
+        <item>com.mi.android.globallauncher</item>
+        <item>com.sec.android.app.launcher</item>
+        <item>com.bbk.launcher2</item>
+        <item>com.nothing.launcher</item>
+        <item>com.teslacoilsw.launcher</item>
+        <item>app.lawnchair</item>
+        <item>app.lawnchair.play</item>
+        <item>org.fossify.home</item>
+        <item>com.microsoft.launcher</item>
+        <item>ginlemon.flowerfree</item>
+        <item>bitpit.launcher</item>
+        <item>com.hollow.app</item>
+        <item>com.whatsapp</item>
+        <item>com.whatsapp.w4b</item>
+        <item>com.snapchat.android</item>
+        <item>com.instagram.android</item>
+        <item>org.telegram.messenger</item>
+        <item>com.zhiliaoapp.musically</item>
+        <item>com.tencent.mm</item>
+    </string-array>
+</resources>
