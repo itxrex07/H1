@@ -1,33 +1,11 @@
-import java.io.File
-import java.net.URL
-import java.security.MessageDigest
-
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
 }
 
-// Xray-core is supplied by the upstream AndroidLibXrayLite AAR. Download a pinned,
-// SHA-256-verified release at build time instead of committing a 60 MB native binary.
-val libv2rayAar = layout.buildDirectory.file("generated/xray/libv2ray.aar")
-val downloadLibv2ray by tasks.registering {
-  outputs.file(libv2rayAar)
-  doLast {
-    val target = libv2rayAar.get().asFile
-    val expectedSha256 = "e56ec3b06485fe7b37af26948673951edf719c50d6bbc618b8539045952adde4"
-    fun sha256(file: File): String = MessageDigest.getInstance("SHA-256")
-      .digest(file.readBytes()).joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
-    if (target.isFile && sha256(target) == expectedSha256) return@doLast
-    target.parentFile.mkdirs()
-    val temporary = File(target.parentFile, "libv2ray.aar.download")
-    URL("https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.10.21/libv2ray.aar")
-      .openStream().use { input -> temporary.outputStream().use { output -> input.copyTo(output) } }
-    check(sha256(temporary) == expectedSha256) { "The downloaded Xray AAR failed SHA-256 verification." }
-    check(temporary.renameTo(target)) { "Could not install the verified Xray AAR." }
-  }
-}
-tasks.named("preBuild").configure { dependsOn(downloadLibv2ray) }
+// Root TPROXY uses the official Xray-core binary downloaded at runtime by RootVpnEngine.
+// The previous AndroidLibXrayLite AAR (~60 MB) is no longer required.
 
 android {
   namespace = "com.hollow.app"
@@ -68,7 +46,6 @@ android {
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
-  implementation(files(libv2rayAar))
   compileOnly(files("libs/xposed-api-82.jar"))
   implementation(libs.androidx.core.splashscreen)
   implementation(platform(libs.androidx.compose.bom))
