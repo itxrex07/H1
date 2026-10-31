@@ -49,6 +49,8 @@ class VpnTunnelConfigTest {
         val reality = stream.getJSONObject("realitySettings")
 
         assertEquals("tun", inbound.getString("protocol"))
+        // Android cannot enumerate interfaces, so Xray must not auto-pick a TUN name.
+        assertEquals("xray0", inbound.getJSONObject("settings").getString("name"))
         assertEquals("raw", stream.getString("method"))
         assertEquals("reality", stream.getString("security"))
         assertEquals("publicKeyForTest", reality.getString("password"))

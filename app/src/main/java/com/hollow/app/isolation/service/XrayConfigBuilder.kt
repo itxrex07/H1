@@ -86,7 +86,10 @@ internal object XrayConfigBuilder {
         val tunInbound = JSONObject()
             .put("tag", "hollow-tun")
             .put("protocol", "tun")
-            .put("settings", JSONObject().put("mtu", 1500))
+            // An explicit name is required on Android. Without it Xray calls GetAvailableTunName(), which
+            // lists system interfaces via netlink; Android blocks that for apps, so config parsing fails with
+            // "fail to get system interface information". The real TUN fd comes from VpnService.
+            .put("settings", JSONObject().put("name", "xray0").put("mtu", 1500))
         val directOutbound = JSONObject()
             .put("tag", "direct")
             .put("protocol", "freedom")
