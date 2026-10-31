@@ -167,7 +167,7 @@ fun DashboardScreen(
                         isVpnOn -> "${activeServer.name} • Tunnel verified"
                         else -> "Import a VLESS node to connect"
                     },
-                    badgeText = if (isVpnOn) "Connected" else "Disconnected",
+                    badgeText = if (isVpnOn) "Connected" else null,
                     icon = Icons.Default.Public,
                     accentColor = Color(0xFF0EA5E9),
                     isGlowEnabled = isVpnOn,
@@ -448,7 +448,7 @@ fun DashboardScreen(
 private fun BentoModuleTile(
     title: String,
     subtitle: String,
-    badgeText: String,
+    badgeText: String?,
     icon: ImageVector,
     accentColor: Color,
     onClick: () -> Unit,
@@ -515,14 +515,16 @@ private fun BentoModuleTile(
                         .padding(horizontal = 9.dp, vertical = 4.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = badgeText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = effectiveColor,
-                            fontFamily = JakartaFontFamily
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
+                        if (badgeText != null) {
+                            Text(
+                                text = badgeText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = effectiveColor,
+                                fontFamily = JakartaFontFamily
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                        }
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
                             contentDescription = null,
