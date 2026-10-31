@@ -70,6 +70,7 @@ android {
 dependencies {
   implementation(files(libv2rayAar))
   compileOnly(files("libs/xposed-api-82.jar"))
+  implementation(libs.androidx.core.splashscreen)
   implementation(platform(libs.androidx.compose.bom))
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
