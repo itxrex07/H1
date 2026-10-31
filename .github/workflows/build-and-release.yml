@@ -55,6 +55,23 @@ jobs:
             gradle testDebugUnitTest assembleDebug --no-daemon --no-configuration-cache --stacktrace --info
           fi
 
+      - name: Stage release APK
+        run: |
+          mkdir -p release-assets
+          # Prefer the universal/debug APK; fall back to any produced debug APK.
+          APK=$(ls app/build/outputs/apk/debug/*-debug.apk 2>/dev/null | head -n1 || true)
+          if [ -z "$APK" ]; then
+            APK=$(ls app/build/outputs/apk/debug/*.apk 2>/dev/null | head -n1 || true)
+          fi
+          if [ -z "$APK" ]; then
+            echo "No debug APK found under app/build/outputs/apk/debug/"
+            ls -laR app/build/outputs/apk || true
+            exit 1
+          fi
+          cp "$APK" "release-assets/Hollow-debug.apk"
+          echo "Staged APK: $APK -> release-assets/Hollow-debug.apk"
+          ls -la release-assets/
+
       - name: Upload Unit Test Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -66,18 +83,20 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Hollow-Debug-APK
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
+          name: Hollow-debug.apk
+          path: release-assets/Hollow-debug.apk
+          if-no-files-found: error
           retention-days: 14
 
       - name: Publish APK to GitHub Releases
         uses: ncipollo/release-action@v1
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         with:
-          artifacts: "app/build/outputs/apk/debug/*.apk"
+          artifacts: "release-assets/Hollow-debug.apk"
+          artifactContentType: application/vnd.android.package-archive
           tag: "latest"
           name: "Hollow Latest APK Release"
           body: "Auto-generated Hollow LSPosed Module APK for commit ${{ github.sha }}"
           allowUpdates: true
+          replacesArtifacts: true
           makeLatest: true
