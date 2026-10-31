@@ -40,23 +40,36 @@ class VpnTunnelConfigTest {
     }
 
     @Test
-    fun generatesVlessRealityOutboundAndTunInbound() {
+    fun generatesVlessRealityOutboundAndTproxyInbound() {
         val server = requireNotNull(VpnProxyPresets.parseUri(validRealityLink))
-        val config = JSONObject(XrayConfigBuilder.build(server))
-        val inbound = config.getJSONArray("inbounds").getJSONObject(0)
+        val config = JSONObject(XrayConfigBuilder.buildRoot(server, tcpPort = 12345, udpPort = 12346, dnsPort = 1053))
+
+        val inbounds = config.getJSONArray("inbounds")
+        assertEquals(2, inbounds.length())
+
+        val tproxy = inbounds.getJSONObject(0)
+        assertEquals("hollow-tproxy", tproxy.getString("tag"))
+        assertEquals("dokodemo-door", tproxy.getString("protocol"))
+        assertEquals(12345, tproxy.getInt("port"))
+        assertTrue(tproxy.getJSONObject("settings").getBoolean("followRedirect"))
+        assertEquals(
+            "tproxy",
+            tproxy.getJSONObject("streamSettings").getJSONObject("sockopt").getString("tproxy")
+        )
+
         val outbound = config.getJSONArray("outbounds").getJSONObject(0)
         val stream = outbound.getJSONObject("streamSettings")
         val reality = stream.getJSONObject("realitySettings")
 
-        assertEquals("tun", inbound.getString("protocol"))
-        // Android cannot enumerate interfaces, so Xray must not auto-pick a TUN name.
-        assertEquals("xray0", inbound.getJSONObject("settings").getString("name"))
         assertEquals("raw", stream.getString("method"))
         assertEquals("reality", stream.getString("security"))
         assertEquals("publicKeyForTest", reality.getString("password"))
         assertEquals("example.org", reality.getString("serverName"))
         assertEquals("deadbeef", reality.getString("shortId"))
-        assertEquals("hollow-vless", config.getJSONObject("routing").getJSONArray("rules").getJSONObject(0).getString("outboundTag"))
+        assertEquals(
+            "hollow-vless",
+            config.getJSONObject("routing").getJSONArray("rules").getJSONObject(0).getString("outboundTag")
+        )
         assertTrue(config.getJSONArray("outbounds").length() >= 2)
     }
 
@@ -64,7 +77,7 @@ class VpnTunnelConfigTest {
     fun preservesLiteralPlusInRealityPublicKey() {
         val link = validRealityLink.replace("pbk=publicKeyForTest", "pbk=public+key+for+test")
         val server = requireNotNull(VpnProxyPresets.parseUri(link))
-        val config = JSONObject(XrayConfigBuilder.build(server))
+        val config = JSONObject(XrayConfigBuilder.buildRoot(server, 12345, 12346, 1053))
         val reality = config.getJSONArray("outbounds").getJSONObject(0)
             .getJSONObject("streamSettings").getJSONObject("realitySettings")
 
@@ -73,7 +86,9 @@ class VpnTunnelConfigTest {
 
     @Test
     fun rejectsMissingConfigurationInsteadOfBuildingPlaceholderServer() {
-        val error = runCatching { XrayConfigBuilder.build(VpnProxyPresets.emptyServer) }.exceptionOrNull()
+        val error = runCatching {
+            XrayConfigBuilder.buildRoot(VpnProxyPresets.emptyServer, 12345, 12346, 1053)
+        }.exceptionOrNull()
         assertNotNull(error)
         assertTrue(error!!.message.orEmpty().contains("Import a VLESS share link"))
     }
