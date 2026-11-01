@@ -277,41 +277,6 @@ fun VpnProxyScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = scheme.surface),
-                    shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(1.dp, scheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "VPN ENGINE",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.8.sp,
-                            color = scheme.onSurfaceVariant,
-                            fontFamily = JakartaFontFamily
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "ROOT TPROXY",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = scheme.onSurface,
-                            fontFamily = JakartaFontFamily
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Uses H1's Xray + root TPROXY engine. No Android VPN interface or VPN permission prompt is used.",
-                            fontSize = 11.sp,
-                            color = scheme.onSurfaceVariant,
-                            fontFamily = JakartaFontFamily
-                        )
-                    }
-                }
-            }
-
             // HERO CARD: Status & Big Power Button
             item {
                 Card(

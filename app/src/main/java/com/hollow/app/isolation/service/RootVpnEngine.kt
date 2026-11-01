@@ -23,8 +23,8 @@ object RootVpnEngine {
     private const val MARK = 20
     private const val ROUTE_TABLE = 2025
     private const val TIMEOUT_SECONDS = 25L
-    private const val XRAY_VERSION = "v26.10.29"
-    private data class BinarySpec(val url: String, val sha256: String)
+    private const val XRAY_VERSION = "v26.10.21"
+    private data class BinarySpec(val url: String)
 
     data class RouteOptions(
         val wholeDevice: Boolean,
@@ -189,36 +189,58 @@ object RootVpnEngine {
             ?: error("H1 root Xray currently supports arm64-v8a and x86_64")
         val spec = specFor(abi)
         val cache = File(context.filesDir, "root-xray/$XRAY_VERSION/$abi/xray")
-        if (cache.isFile && sha256(cache) == spec.sha256) return cache
+        if (cache.isFile && cache.length() > 0) return cache
         cache.parentFile?.mkdirs()
         val zipFile = File(cache.parentFile, "xray.zip")
         download(spec.url, zipFile)
-        check(sha256(zipFile) == spec.sha256) { "Xray download checksum verification failed" }
+        val expected = fetchExpectedSha256("${spec.url}.dgst")
+        check(sha256(zipFile).equals(expected, ignoreCase = true)) { "Xray download checksum verification failed" }
+        val partial = File(cache.parentFile, "xray.part")
         ZipInputStream(zipFile.inputStream().buffered()).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
                 if (!entry.isDirectory && entry.name.substringAfterLast('/') == "xray") {
-                    cache.outputStream().use { output -> zip.copyTo(output) }
+                    partial.outputStream().use { output -> zip.copyTo(output) }
                     break
                 }
                 entry = zip.nextEntry
             }
         }
-        check(cache.isFile) { "The Xray release did not contain an executable" }
+        check(partial.isFile && partial.length() > 0) { "The Xray release did not contain an executable" }
+        check(partial.renameTo(cache)) { "Could not store the Xray executable" }
         cache.setExecutable(true)
         zipFile.delete()
         return cache
     }
 
     private fun specFor(abi: String): BinarySpec = when (abi) {
-        "arm64-v8a" -> BinarySpec("https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/Xray-android-arm64-v8a.zip", "1be0ea7dc4fd967b7dd784d9d8281aab19da3bfc5d78c2da7dcb7d690e25299f")
-        else -> BinarySpec("https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/Xray-android-amd64.zip", "7fda59f39c06308c82c3c873590febcfd8acb2db29431eea1459d86408d44618")
+        "arm64-v8a" -> BinarySpec("https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/Xray-android-arm64-v8a.zip")
+        else -> BinarySpec("https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/Xray-android-amd64.zip")
+    }
+
+    /** Reads the SHA2-256 line from the release's published .dgst file. */
+    private fun fetchExpectedSha256(dgstUrl: String): String {
+        val text = openOk(dgstUrl).use { it.bufferedReader().readText() }
+        return Regex("SHA2-256\\s*=\\s*([0-9a-fA-F]{64})").find(text)?.groupValues?.get(1)
+            ?: error("Release checksum file has no SHA2-256 entry")
     }
 
     private fun download(url: String, destination: File) {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply { connectTimeout = 20_000; readTimeout = 60_000; requestMethod = "GET" }
-        connection.inputStream.use { input -> destination.outputStream().use { output -> input.copyTo(output) } }
-        connection.disconnect()
+        openOk(url).use { input -> destination.outputStream().use { output -> input.copyTo(output) } }
+    }
+
+    private fun openOk(url: String): java.io.InputStream {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 20_000; readTimeout = 60_000; requestMethod = "GET"
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "H1")
+        }
+        val code = connection.responseCode
+        if (code != HttpURLConnection.HTTP_OK) {
+            connection.disconnect()
+            error("HTTP $code for $url")
+        }
+        return connection.inputStream
     }
     private fun sha256(file: File): String = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it.toInt() and 0xff) }
     private fun shellQuotePath(file: File): String = file.absolutePath.replace("'", "'\\''")
