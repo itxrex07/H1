@@ -1080,7 +1080,7 @@ private fun CleanFolderExplorerView(
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "This folder is empty",
+                            text = if (uiState.errorMessage.isNullOrBlank()) "This folder is empty" else "Could not open this folder",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = JakartaFontFamily,
@@ -1088,7 +1088,7 @@ private fun CleanFolderExplorerView(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Tap '+ New' below to add a folder, note, or file.",
+                            text = uiState.errorMessage ?: "Tap '+ New' below to add a folder, note, or file.",
                             fontSize = 13.sp,
                             color = scheme.onSurfaceVariant,
                             fontFamily = JakartaFontFamily

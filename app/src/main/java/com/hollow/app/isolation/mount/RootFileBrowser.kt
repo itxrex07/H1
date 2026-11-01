@@ -29,7 +29,9 @@ object RootFileBrowser {
         require(PACKAGE_REGEX.matches(packageName)) { "Invalid package name" }
         return when (source) {
             FileSource.VOLUME -> MountManager.volumeDir(context, packageName).absolutePath
-            FileSource.SANDBOX -> "/data/user/0/$packageName/files/IsoVault_Sandbox"
+            // Current hook-only and root-mounted storage share one canonical volume. The old
+            // IsoVault_Sandbox location is no longer written to and made browsing look empty.
+            FileSource.SANDBOX -> MountManager.volumeDir(context, packageName).absolutePath
         }
     }
 
@@ -44,9 +46,9 @@ object RootFileBrowser {
             // Trust-anchor the path at the target app's private data directory. The app may write
             // inside the volume, but a symlinked volume root is never accepted as its own base.
             FileSource.VOLUME -> "\"\$(realpath /data/user/0/$packageName 2>/dev/null)\"" + shellQuote("/files/isovault_storage")
-            // The app owns files/IsoVault_Sandbox, so it is compared against the trusted anchor
-            // /data/user/0/<pkg>: a symlink planted anywhere below it changes the resolved path.
-            FileSource.SANDBOX -> "\"\$(realpath /data/user/0/$packageName 2>/dev/null)\"" + shellQuote("/files/IsoVault_Sandbox")
+            // Keep the same trusted app-private anchor for both labels; never follow a planted
+            // symlink under the target package's files directory.
+            FileSource.SANDBOX -> "\"\$(realpath /data/user/0/$packageName 2>/dev/null)\"" + shellQuote("/files/isovault_storage")
         }
         val want = if (rel.isEmpty()) "\"\$RB\"" else "\"\$RB\"" + shellQuote("/$rel")
         return "RB=\$(realpath ${shellQuote(base)} 2>/dev/null) || { echo 'Nothing here yet.' >&2; exit 4; }\n" +

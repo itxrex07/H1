@@ -572,14 +572,17 @@ class StorageIsolationHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                             File(sandboxRoot, "Pictures"),
                             File(sandboxRoot, "Movies"),
                             File(sandboxRoot, "Download"),
+                            File(sandboxRoot, "Android/media/$pkg"),
                             sandboxRoot
                         )
                         for (dir in searchDirs) {
                             if (dir.exists()) {
                                 dir.walkTopDown()
-                                    .maxDepth(3)
+                                    // Chat apps commonly save media several levels below
+                                    // Android/media/<package>/WhatsApp/Media/...
+                                    .maxDepth(12)
                                     .filter { it.isFile && isMediaFile(it) && !it.name.startsWith(".") }
-                                    .take(150)
+                                    .take(500)
                                     .forEach { mediaFiles.add(it) }
                             }
                         }
@@ -670,13 +673,15 @@ class StorageIsolationHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                     val values = param.args.firstOrNull { it is ContentValues } as? ContentValues
                     val sandboxRoot = getOrCreateSandboxRoot(pkg)
 
-                    val relPath = values?.getAsString(MediaStore.MediaColumns.RELATIVE_PATH)?.trim('/')
+                    val requestedRelPath = values?.getAsString(MediaStore.MediaColumns.RELATIVE_PATH)?.trim('/')
                         ?: values?.getAsString("relative_path")?.trim('/')
                         ?: "Pictures"
-                    val displayName = values?.getAsString(MediaStore.MediaColumns.DISPLAY_NAME)
+                    val relPath = IsolationRuleManager.sanitizeRelative(requestedRelPath).ifBlank { "Pictures" }
+                    val requestedName = values?.getAsString(MediaStore.MediaColumns.DISPLAY_NAME)
                         ?: values?.getAsString("_display_name")
                         ?: "media_${System.currentTimeMillis()}.jpg"
-                    val mimeType = values?.getAsString(MediaStore.MediaColumns.MIME_TYPE).orEmpty()
+                    val displayName = requestedName.substringAfterLast('/').substringAfterLast('\\')
+                        .ifBlank { "media_${System.currentTimeMillis()}.jpg" }
 
                     val targetDir = File(sandboxRoot, relPath)
                     targetDir.mkdirs()
@@ -684,13 +689,9 @@ class StorageIsolationHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                     try { targetFile.createNewFile() } catch (_: Throwable) {}
 
                     val virtualId = registerSandboxMedia(targetFile)
-                    val collection = when {
-                        mimeType.startsWith("video/", ignoreCase = true) -> "video/media"
-                        mimeType.startsWith("audio/", ignoreCase = true) -> "audio/media"
-                        mimeType.startsWith("image/", ignoreCase = true) -> "images/media"
-                        else -> "file"
-                    }
-                    val resultUri = Uri.parse("content://media/external/$collection/$virtualId")
+                    // Keep the collection the caller inserted into. Returning an Images URI for
+                    // audio/video inserts can make apps display the item but fail to reopen it.
+                    val resultUri = uri.buildUpon().appendPath(virtualId.toString()).build()
                     virtualUriMap[resultUri.toString()] = targetFile
 
                     param.result = resultUri
@@ -765,14 +766,11 @@ class StorageIsolationHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                         targetFile.parentFile?.mkdirs()
                         try { targetFile.createNewFile() } catch (_: Throwable) {}
 
-                        val append = mode == "wa"
-                        val truncate = mode.isEmpty() || mode == "w" || mode == "wt"
                         when (methodName) {
-                            "openOutputStream" -> param.result = FileOutputStream(targetFile, append)
+                            "openOutputStream" -> param.result = FileOutputStream(targetFile, mode.contains("a"))
                             else -> {
                                 var flags = ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_CREATE
-                                if (append) flags = flags or ParcelFileDescriptor.MODE_APPEND
-                                else if (truncate) flags = flags or ParcelFileDescriptor.MODE_TRUNCATE
+                                if (!mode.contains("a")) flags = flags or ParcelFileDescriptor.MODE_TRUNCATE
                                 val pfd = ParcelFileDescriptor.open(targetFile, flags)
                                 param.result = if (methodName == "openFileDescriptor" || methodName == "openFile") pfd
                                                else AssetFileDescriptor(pfd, 0, AssetFileDescriptor.UNKNOWN_LENGTH)

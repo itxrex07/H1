@@ -11,6 +11,10 @@ import androidx.lifecycle.viewModelScope
 import com.hollow.app.IsoVaultApp
 import com.hollow.app.isolation.crypto.AesVaultCipher
 import com.hollow.app.isolation.data.entity.VaultFileItem
+import com.hollow.app.isolation.model.IsolationRuleManager
+import com.hollow.app.isolation.mount.FileSource
+import com.hollow.app.isolation.mount.MountManager
+import com.hollow.app.isolation.mount.RootFileBrowser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -171,34 +175,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             return privateDir
         }
 
-        fun resolveSeparateAppDriveRoot(context: android.content.Context, packageName: String): File {
-            val privateDir = File(context.filesDir, "hollow_drives/$packageName").apply {
-                if (!exists()) {
-                    mkdirs()
-                    try {
-                        setReadable(true, true)
-                        setWritable(true, true)
-                        setExecutable(true, true)
-                    } catch (_: Throwable) {}
-                }
-            }
-            try {
-                val noMedia = File(privateDir, ".nomedia")
-                if (!noMedia.exists()) noMedia.createNewFile()
-            } catch (_: Throwable) {}
-
-            try {
-                val legacy = File("/storage/emulated/0/Hollow_Drives/$packageName")
-                if (legacy.exists() && legacy.isDirectory) {
-                    legacy.copyRecursively(privateDir, overwrite = false)
-                    legacy.deleteRecursively()
-                }
-            } catch (_: Throwable) {}
-
-            listOf("DCIM", "DCIM/Camera", "Pictures", "Movies", "Download", "Documents", "Music")
-                .forEach { sub -> try { File(privateDir, sub).mkdirs() } catch (_: Throwable) {} }
-            return privateDir
-        }
+        fun resolveSeparateAppDriveRoot(context: android.content.Context, packageName: String): File =
+            MountManager.volumeDir(context, packageName)
     }
 
     private val _uiState = MutableStateFlow(
@@ -281,16 +259,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun inspectSeparateDriveStats(packageName: String, appName: String, badge: String): SeparateAppDriveInfo {
         val dir = resolveSeparateAppDriveRoot(ctx, packageName)
-        var bytes = 0L
-        var count = 0
-        try {
-            dir.walkTopDown().maxDepth(4).forEach { f ->
-                if (f.absolutePath != dir.absolutePath && !f.name.startsWith(".")) {
-                    count++
-                    if (f.isFile) bytes += f.length()
-                }
-            }
-        } catch (_: Throwable) {}
+        val entries = RootFileBrowser.list(ctx, packageName, FileSource.VOLUME, "").entries
+        val count = entries.size
+        val bytes = entries.filterNot { it.isDir }.sumOf { it.size }
         return SeparateAppDriveInfo(
             packageName = packageName,
             appName = appName,
@@ -302,6 +273,26 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun navigateToPath(path: String) {
+        val currentState = _uiState.value
+        if (currentState.activeSeparateDrivePkg != null) {
+            val root = File(currentState.rootPath).absolutePath.trimEnd('/')
+            val target = File(path).absolutePath
+            val rel = if (target == root) "" else target.removePrefix("$root/")
+            if ((target != root && rel == target) || rel.split('/').any { it == ".." || it == "." }) {
+                _notice.value = "That path is outside this app's isolated volume."
+                return
+            }
+            val safeRel = IsolationRuleManager.sanitizeRelative(rel)
+            if (safeRel != rel) {
+                _notice.value = "That folder path is not valid."
+                return
+            }
+            _uiState.update {
+                it.copy(currentPath = if (rel.isEmpty()) root else "$root/$rel", selectedPaths = emptySet(), searchQuery = "")
+            }
+            refreshDirectory()
+            return
+        }
         val target = File(path)
         if (!target.exists()) {
             try { target.mkdirs() } catch (_: Throwable) {}
@@ -469,6 +460,54 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                     running = "$running/$part"
                     crumbs.add(BreadcrumbSegment(part, running))
                 }
+            }
+
+            // Per-app volumes live under another package's private data directory. java.io.File
+            // in this manager process cannot enumerate them; use the guarded root reader instead.
+            val remotePackage = state.activeSeparateDrivePkg
+            if (remotePackage != null) {
+                val rel = if (currentDir.absolutePath == rootFile.absolutePath) ""
+                else currentDir.absolutePath.removePrefix("${rootFile.absolutePath.trimEnd('/')}/")
+                val isLocked = MountManager.isSealed(ctx, remotePackage)
+                val result = if (isLocked) null else RootFileBrowser.list(ctx, remotePackage, FileSource.VOLUME, rel)
+                val remoteItems = result?.entries.orEmpty()
+                    .filter { state.showHiddenFiles || !it.name.startsWith(".") }
+                    .filter { state.searchQuery.isBlank() || it.name.contains(state.searchQuery, ignoreCase = true) }
+                    .map { remote ->
+                        val extension = if (remote.isDir) "" else remote.name.substringAfterLast('.', "").lowercase()
+                        FileEntryItem(
+                            path = File(rootFile, remote.relPath).absolutePath,
+                            name = remote.name,
+                            isDirectory = remote.isDir,
+                            sizeBytes = remote.size,
+                            lastModified = remote.modifiedSec * 1000L,
+                            extension = extension,
+                            category = if (remote.isDir) FileCategory.FOLDER else categorizeFile(File(remote.name)),
+                            childCount = 0,
+                            isReadable = true,
+                            isWritable = false,
+                            isHidden = remote.name.startsWith(".")
+                        )
+                    }
+                val comparator = when (state.sortField) {
+                    FileSortField.NAME -> compareBy<FileEntryItem> { it.name.lowercase() }
+                    FileSortField.DATE -> compareBy<FileEntryItem> { it.lastModified }
+                    FileSortField.SIZE -> compareBy<FileEntryItem> { it.sizeBytes }
+                    FileSortField.TYPE -> compareBy<FileEntryItem> { it.extension.lowercase() }.thenBy { it.name.lowercase() }
+                }
+                val directedComparator = if (state.sortAscending) comparator else comparator.reversed()
+                val sorted = remoteItems.sortedWith(compareByDescending<FileEntryItem> { it.isDirectory }.then(directedComparator))
+                _uiState.update {
+                    it.copy(
+                        breadcrumbs = crumbs,
+                        entries = sorted,
+                        isLoading = false,
+                        errorMessage = if (isLocked) {
+                            "This app volume is locked. Unlock it from the app's isolation controls first."
+                        } else result?.error
+                    )
+                }
+                return@launch
             }
 
             if (!currentDir.exists() || !currentDir.canRead()) {
