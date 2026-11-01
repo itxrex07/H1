@@ -676,6 +676,7 @@ class StorageIsolationHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                     val displayName = values?.getAsString(MediaStore.MediaColumns.DISPLAY_NAME)
                         ?: values?.getAsString("_display_name")
                         ?: "media_${System.currentTimeMillis()}.jpg"
+                    val mimeType = values?.getAsString(MediaStore.MediaColumns.MIME_TYPE).orEmpty()
 
                     val targetDir = File(sandboxRoot, relPath)
                     targetDir.mkdirs()
@@ -683,7 +684,13 @@ class StorageIsolationHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                     try { targetFile.createNewFile() } catch (_: Throwable) {}
 
                     val virtualId = registerSandboxMedia(targetFile)
-                    val resultUri = Uri.parse("content://media/external/images/media/$virtualId")
+                    val collection = when {
+                        mimeType.startsWith("video/", ignoreCase = true) -> "video/media"
+                        mimeType.startsWith("audio/", ignoreCase = true) -> "audio/media"
+                        mimeType.startsWith("image/", ignoreCase = true) -> "images/media"
+                        else -> "file"
+                    }
+                    val resultUri = Uri.parse("content://media/external/$collection/$virtualId")
                     virtualUriMap[resultUri.toString()] = targetFile
 
                     param.result = resultUri
@@ -758,11 +765,15 @@ class StorageIsolationHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                         targetFile.parentFile?.mkdirs()
                         try { targetFile.createNewFile() } catch (_: Throwable) {}
 
+                        val append = mode == "wa"
+                        val truncate = mode.isEmpty() || mode == "w" || mode == "wt"
                         when (methodName) {
-                            "openOutputStream" -> param.result = FileOutputStream(targetFile)
+                            "openOutputStream" -> param.result = FileOutputStream(targetFile, append)
                             else -> {
-                                val pfd = ParcelFileDescriptor.open(targetFile,
-                                    ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_CREATE)
+                                var flags = ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_CREATE
+                                if (append) flags = flags or ParcelFileDescriptor.MODE_APPEND
+                                else if (truncate) flags = flags or ParcelFileDescriptor.MODE_TRUNCATE
+                                val pfd = ParcelFileDescriptor.open(targetFile, flags)
                                 param.result = if (methodName == "openFileDescriptor" || methodName == "openFile") pfd
                                                else AssetFileDescriptor(pfd, 0, AssetFileDescriptor.UNKNOWN_LENGTH)
                             }
